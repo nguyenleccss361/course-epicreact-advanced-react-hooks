@@ -22,7 +22,10 @@ function MessagesDisplay({messages}) {
   // that returns an object with scrollToTop and scrollToBottom
 
   return (
-    <div ref={containerRef} role="log">
+    <div 
+      // ref={ref} // ref pass from parent component, but do this will expose all method from this <div>, use useImperativeHandle instead to encapsulate only 2 methods: scrollToTop, scrollToBottom
+      ref={containerRef} 
+      role="log">
       {messages.map((message, index, array) => (
         <div key={message.id}>
           <strong>{message.author}</strong>: <span>{message.content}</span>
