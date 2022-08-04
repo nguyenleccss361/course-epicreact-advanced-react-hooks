@@ -31,8 +31,25 @@ function pokemonInfoReducer(state, action) {
   }
 }
 
-function useAsync(asyncCallback, initialState) {
-  const [state, dispatch] = React.useReducer(pokemonInfoReducer, {
+function useSafeDispatch(dispatch) {
+  const mountedRef = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  return React.useCallback((...args) => {
+    if (mountedRef.current) {
+      dispatch(...args);
+    }
+  }, [dispatch])
+}
+
+function useAsync(initialState) {
+  const [state, unsafeDispatch] = React.useReducer(pokemonInfoReducer, {
     status: 'idle',
     // 🐨 this will need to be "data" instead of "pokemon"
     data: null,
@@ -40,13 +57,10 @@ function useAsync(asyncCallback, initialState) {
     ...initialState,
   })
 
-  React.useEffect(() => {
-    // 💰 this first early-exit bit is a little tricky, so let me give you a hint:
-    const promise = asyncCallback()
-    if (!promise) {
-      return
-    }
-    // then you can dispatch and handle the promise etc...
+  const dispatch = useSafeDispatch(unsafeDispatch)
+  
+  const run = React.useCallback((promise) => {
+
     dispatch({type: 'pending'})
     promise.then(
       data => {
@@ -56,30 +70,26 @@ function useAsync(asyncCallback, initialState) {
         dispatch({type: 'rejected', error})
       },
     )
-    // 🐨 you'll accept dependencies as an array and pass that here.
-    // 🐨 because of limitations with ESLint, you'll need to ignore
-    // the react-hooks/exhaustive-deps rule. We'll fix this in an extra credit.
-  }, [asyncCallback])
+  }, [dispatch]) // dispatch will never change because useReducer will make sure of that, promise is argument pass to the function so it will not change either
 
-  return state
+  return {...state, run} // Spread object {...Object} get an the same object
 }
 
 function PokemonInfo({pokemonName}) {
-  // 🐨 move all the code between the lines into a new useAsync function.
-  // 💰 look below to see how the useAsync hook is supposed to be called
-  // 💰 If you want some help, here's the function signature (or delete this
-  // comment really quick if you don't want the spoiler)!
-  const asyncCallback = React.useCallback(() => {
+  // 💰 destructuring this here now because it just felt weird to call this
+  // "state" still when it's also returning a function called "run" 🙃
+  const {data: pokemon, status, error, run} = useAsync({status: pokemonName ? 'pending' : 'idle'})
+
+  React.useEffect(() => {
     if (!pokemonName) {
       return
     }
-    return fetchPokemon(pokemonName)
-  }, [pokemonName])
-
-  // 🐨 here's how you'll use the new useAsync hook you're writing:
-  const state = useAsync(asyncCallback, {status: pokemonName ? 'pending' : 'idle'})
-  // 🐨 this will change from "pokemon" to "data"
-  const {data: pokemon, status, error} = state
+    // 💰 note the absence of `await` here. We're literally passing the promise
+    // to `run` so `useAsync` can attach it's own `.then` handler on it to keep
+    // track of the state of the promise.
+    const pokemonPromise = fetchPokemon(pokemonName)
+    run(pokemonPromise)
+  }, [pokemonName, run])
 
   switch (status) {
     case 'idle':
